@@ -2,25 +2,31 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
 <title>Retro Ball - Multiplayer Edition</title>
 <style>
-    body {
+    /* Prevent scrolling, bounces, and text highlights entirely on iPad */
+    html, body {
         margin: 0;
+        padding: 0;
+        width: 100%;
+        height: 100%;
+        overflow: hidden;
         background: #0b0f1a;
         display: flex;
         justify-content: center;
         align-items: center;
-        height: 100vh;
         font-family: monospace;
         color: white;
         flex-direction: column;
         user-select: none;
         -webkit-user-select: none;
-        overflow: hidden;
+        touch-action: none;
     }
 
     #game-container {
         position: relative;
+        touch-action: none;
     }
 
     canvas {
@@ -29,6 +35,7 @@
         image-rendering: pixelated;
         display: block;
         cursor: pointer;
+        touch-action: none;
     }
 
     #hud {
@@ -101,6 +108,7 @@
         width: 1000px;
         height: 600px;
         pointer-events: none;
+        touch-action: none;
     }
 
     #touch-joystick-zone {
@@ -110,6 +118,7 @@
         width: 500px;
         height: 600px;
         pointer-events: auto;
+        touch-action: none;
     }
 
     #joystick-boundary {
@@ -153,25 +162,37 @@
         pointer-events: auto;
         cursor: pointer;
         box-shadow: 0 0 10px rgba(60, 255, 208, 0.2);
+        touch-action: none;
     }
-    .v-btn:active {
+    .v-btn:active, .v-btn.active-touch {
         background: rgba(60, 255, 208, 0.4);
         color: white;
     }
 
     #btn-tackle {
         right: 50px;
-        bottom: 150px; 
+        bottom: 155px; 
         border-color: #ff0077;
         color: #ff0077;
     }
-    #btn-tackle:active {
+    #btn-tackle:active, #btn-tackle.active-touch {
         background: rgba(255, 0, 119, 0.4);
     }
 
     #btn-shoot {
         right: 50px;
         bottom: 50px; 
+    }
+
+    /* Placed to the LEFT of the shoot button (Increased 'right' offset) */
+    #btn-sprint {
+        right: 145px;
+        bottom: 50px;
+        border-color: #ffea00;
+        color: #ffea00;
+    }
+    #btn-sprint:active, #btn-sprint.active-touch {
+        background: rgba(255, 234, 0, 0.4);
     }
 </style>
 <script src="https://unpkg.com/peerjs@1.5.4/dist/peerjs.min.js"></script>
@@ -191,6 +212,7 @@
         </div>
         <div id="btn-tackle" class="v-btn">BTN 2<br>TACKLE</div>
         <div id="btn-shoot" class="v-btn">BTN 1<br>SHOOT</div>
+        <div id="btn-sprint" class="v-btn">BTN 3<br>SPRINT</div>
     </div>
 </div>
 
@@ -209,6 +231,11 @@
 </div>
 
 <script>
+// Prevent iPad dual-tap zooming safari features
+document.addEventListener('gesturestart', function (e) {
+    e.preventDefault();
+});
+
 const canvas = document.getElementById("game");
 const ctx = canvas.getContext("2d");
 
@@ -223,6 +250,7 @@ let joystickVector = { x: 0, y: 0 };
 let joystickActive = false;
 let joystickCenter = { x: 0, y: 0 };
 let currentPointerId = null;
+let touchSprintActive = false; 
 
 let peer = null;
 let conn = null;
@@ -321,11 +349,29 @@ function triggerAction(playerNum, forcedActionType = "") {
     if (isMultiplayerMode) sendNetworkData({ type: "action", action: decision, player: playerNum });
 }
 
-document.getElementById("btn-shoot").addEventListener("pointerdown", () => {
+document.getElementById("btn-shoot").addEventListener("pointerdown", (e) => {
+    e.preventDefault();
     triggerAction((isMultiplayerMode && !isHost) ? 2 : 1, "shoot");
 });
-document.getElementById("btn-tackle").addEventListener("pointerdown", () => {
+document.getElementById("btn-tackle").addEventListener("pointerdown", (e) => {
+    e.preventDefault();
     triggerAction((isMultiplayerMode && !isHost) ? 2 : 1, "tackle");
+});
+
+const sprintBtn = document.getElementById("btn-sprint");
+sprintBtn.addEventListener("pointerdown", (e) => {
+    e.preventDefault();
+    touchSprintActive = true;
+    sprintBtn.classList.add("active-touch");
+});
+sprintBtn.addEventListener("pointerup", (e) => {
+    e.preventDefault();
+    touchSprintActive = false;
+    sprintBtn.classList.remove("active-touch");
+});
+sprintBtn.addEventListener("pointercancel", (e) => {
+    touchSprintActive = false;
+    sprintBtn.classList.remove("active-touch");
 });
 
 const jZone = document.getElementById("touch-joystick-zone");
@@ -333,6 +379,7 @@ const jBoundary = document.getElementById("joystick-boundary");
 const jStick = document.getElementById("joystick-stick");
 
 jZone.addEventListener("pointerdown", (e) => {
+    e.preventDefault();
     if (joystickActive) return;
     joystickActive = true;
     currentPointerId = e.pointerId;
@@ -352,6 +399,7 @@ jZone.addEventListener("pointerdown", (e) => {
 });
 
 jZone.addEventListener("pointermove", (e) => {
+    e.preventDefault();
     if (!joystickActive || e.pointerId !== currentPointerId) return;
 
     const rect = jZone.getBoundingClientRect();
@@ -374,14 +422,25 @@ jZone.addEventListener("pointermove", (e) => {
 });
 
 jZone.addEventListener("pointerup", (e) => {
+    e.preventDefault();
     if (e.pointerId !== currentPointerId) return;
-    joystickActive = false; currentPointerId = null;
+    joystickActive = false; 
+    currentPointerId = null;
     jBoundary.style.display = "none";
-    joystickVector.x = 0; joystickVector.y = 0;
+    joystickVector.x = 0; 
+    joystickVector.y = 0;
 });
 
-const p1 = { x: 200, y: 300, color: "cyan", score: 0, stamina: 100, maxStamina: 100, radius: 14 };
-const p2 = { x: 800, y: 300, color: "red", score: 0, stamina: 100, maxStamina: 100, radius: 14 };
+jZone.addEventListener("pointercancel", (e) => {
+    joystickActive = false;
+    currentPointerId = null;
+    jBoundary.style.display = "none";
+    joystickVector.x = 0;
+    joystickVector.y = 0;
+});
+
+const p1 = { x: 200, y: 300, color: "cyan", score: 0, stamina: 100, maxStamina: 100, radius: 14, stunTimer: 0 };
+const p2 = { x: 800, y: 300, color: "red", score: 0, stamina: 100, maxStamina: 100, radius: 14, stunTimer: 0 };
 const ball = { x: 500, y: 300, vx: 0, vy: 0, size: 9, owner: null, protectionTimer: 0, lastOwner: null };
 
 function setupMultiplayerMenu() {
@@ -432,13 +491,13 @@ function handleIncomingNetworkData(data) {
     }
     if (data.type === "state") {
         if (!isHost) {
-            targetP1.x = data.p1.x; targetP1.y = data.p1.y; p1.stamina = data.p1.stamina;
-            targetP2.x = data.p2.x; targetP2.y = data.p2.y; p2.stamina = data.p2.stamina;
+            targetP1.x = data.p1.x; targetP1.y = data.p1.y; p1.stamina = data.p1.stamina; p1.stunTimer = data.p1.stunTimer;
+            targetP2.x = data.p2.x; targetP2.y = data.p2.y; p2.stamina = data.p2.stamina; p2.stunTimer = data.p2.stunTimer;
             targetBall.x = data.ball.x; targetBall.y = data.ball.y;
             ball.owner = data.ball.owner; p1.score = data.p1.score; p2.score = data.p2.score;
             goalSequenceTimer = data.goalSequenceTimer;
             if (data.gameOver) { gameMode = "gameover"; winner = data.winner; }
-        } else { targetP2.x = data.p2.x; targetP2.y = data.p2.y; p2.stamina = data.p2.stamina; }
+        } else { targetP2.x = data.p2.x; targetP2.y = data.p2.y; p2.stamina = data.p2.stamina; p2.stunTimer = data.p2.stunTimer; }
     }
     if (data.type === "action") {
         if (data.action === "shoot") shoot(data.player);
@@ -496,8 +555,20 @@ function drawField() {
 }
 
 function drawCircle(obj, color, r = 14) {
-    ctx.fillStyle = color; ctx.beginPath(); ctx.arc(obj.x, obj.y, r, 0, Math.PI * 2); ctx.fill();
+    if (obj.stunTimer > 0 && Math.floor(Date.now() / 100) % 2 === 0) {
+        ctx.fillStyle = "#ffcc00"; 
+    } else {
+        ctx.fillStyle = color;
+    }
+    ctx.beginPath(); ctx.arc(obj.x, obj.y, r, 0, Math.PI * 2); ctx.fill();
     ctx.strokeStyle = "white"; ctx.lineWidth = 1.5; ctx.stroke();
+
+    if (obj.stunTimer > 0) {
+        ctx.fillStyle = "#ffcc00";
+        ctx.font = "10px monospace";
+        ctx.textAlign = "center";
+        ctx.fillText("STUNNED", obj.x, obj.y - r - 15);
+    }
 }
 
 function drawStaminaBar(p) {
@@ -509,68 +580,88 @@ function drawStaminaBar(p) {
 }
 
 function movePlayers() {
+    if (p1.stunTimer > 0) p1.stunTimer--;
+    if (p2.stunTimer > 0) p2.stunTimer--;
+
     if (!isMultiplayerMode || isHost) {
-        let speedMultiplier = 2.8;
-        if (controlDevice === "handheld") {
-            p1.x += joystickVector.x * speedMultiplier; p1.y += joystickVector.y * speedMultiplier;
-            p1.stamina = Math.min(p1.maxStamina, p1.stamina + 0.15); 
-        } else {
-            let p1Moving = keys["w"] || keys["s"] || keys["a"] || keys["d"];
-            if (keys["shiftleft"] && p1.stamina > 0 && p1Moving) { speedMultiplier = 4.8; p1.stamina = Math.max(0, p1.stamina - 0.6); }
-            else { p1.stamina = Math.min(p1.maxStamina, p1.stamina + 0.2); }
-            if (keys["w"]) p1.y -= speedMultiplier; if (keys["s"]) p1.y += speedMultiplier; if (keys["a"]) p1.x -= speedMultiplier; if (keys["d"]) p1.x += speedMultiplier;
+        if (p1.stunTimer <= 0) {
+            let speedMultiplier = 2.8;
+            if (controlDevice === "handheld") {
+                let isJoystickMoving = (joystickVector.x !== 0 || joystickVector.y !== 0);
+                if (touchSprintActive && p1.stamina > 0 && isJoystickMoving) {
+                    speedMultiplier = 4.8;
+                    p1.stamina = Math.max(0, p1.stamina - 0.6);
+                } else {
+                    p1.stamina = Math.min(p1.maxStamina, p1.stamina + 0.15);
+                }
+                p1.x += joystickVector.x * speedMultiplier; p1.y += joystickVector.y * speedMultiplier;
+            } else {
+                let p1Moving = keys["w"] || keys["s"] || keys["a"] || keys["d"];
+                if (keys["shiftleft"] && p1.stamina > 0 && p1Moving) { speedMultiplier = 4.8; p1.stamina = Math.max(0, p1.stamina - 0.6); }
+                else { p1.stamina = Math.min(p1.maxStamina, p1.stamina + 0.2); }
+                if (keys["w"]) p1.y -= speedMultiplier; if (keys["s"]) p1.y += speedMultiplier; if (keys["a"]) p1.x -= speedMultiplier; if (keys["d"]) p1.x += speedMultiplier;
+            }
         }
         p1.x = Math.max(20, Math.min(980, p1.x)); p1.y = Math.max(20, Math.min(580, p1.y));
     }
 
     if (isMultiplayerMode) {
         if (!isHost) {
-            let speedMultiplier = 2.8;
-            if (controlDevice === "handheld") {
-                p2.x += joystickVector.x * speedMultiplier; p2.y += joystickVector.y * speedMultiplier;
-                p2.stamina = Math.min(p2.maxStamina, p2.stamina + 0.15);
-            } else {
-                let p2Moving = keys["w"] || keys["s"] || keys["a"] || keys["d"] || keys["arrowup"] || keys["arrowdown"] || keys["arrowleft"] || keys["arrowright"];
-                let up = keys["w"] || keys["arrowup"], down = keys["s"] || keys["arrowdown"], left = keys["a"] || keys["arrowleft"], right = keys["d"] || keys["arrowright"];
-                if ((keys["shiftleft"] || keys["shiftright"]) && p2.stamina > 0 && p2Moving) { speedMultiplier = 4.8; p2.stamina = Math.max(0, p2.stamina - 0.6); }
-                else { p2.stamina = Math.min(p2.maxStamina, p2.stamina + 0.2); }
-                if (up) p2.y -= speedMultiplier; if (down) p2.y += speedMultiplier; if (left) p2.x -= speedMultiplier; if (right) p2.x += speedMultiplier;
+            if (p2.stunTimer <= 0) {
+                let speedMultiplier = 2.8;
+                if (controlDevice === "handheld") {
+                    let isJoystickMoving = (joystickVector.x !== 0 || joystickVector.y !== 0);
+                    if (touchSprintActive && p2.stamina > 0 && isJoystickMoving) {
+                        speedMultiplier = 4.8;
+                        p2.stamina = Math.max(0, p2.stamina - 0.6);
+                    } else {
+                        p2.stamina = Math.min(p2.maxStamina, p2.stamina + 0.15);
+                    }
+                    p2.x += joystickVector.x * speedMultiplier; p2.y += joystickVector.y * speedMultiplier;
+                } else {
+                    let p2Moving = keys["w"] || keys["s"] || keys["a"] || keys["d"] || keys["arrowup"] || keys["arrowdown"] || keys["arrowleft"] || keys["arrowright"];
+                    let up = keys["w"] || keys["arrowup"], down = keys["s"] || keys["arrowdown"], left = keys["a"] || keys["arrowleft"], right = keys["d"] || keys["arrowright"];
+                    if ((keys["shiftleft"] || keys["shiftright"]) && p2.stamina > 0 && p2Moving) { speedMultiplier = 4.8; p2.stamina = Math.max(0, p2.stamina - 0.6); }
+                    else { p2.stamina = Math.min(p2.maxStamina, p2.stamina + 0.2); }
+                    if (up) p2.y -= speedMultiplier; if (down) p2.y += speedMultiplier; if (left) p2.x -= speedMultiplier; if (right) p2.x += speedMultiplier;
+                }
             }
             p2.x = Math.max(20, Math.min(980, p2.x)); p2.y = Math.max(20, Math.min(580, p2.y));
-            sendNetworkData({ type: "state", p2: { x: p2.x, y: p2.y, stamina: p2.stamina } });
+            sendNetworkData({ type: "state", p2: { x: p2.x, y: p2.y, stamina: p2.stamina, stunTimer: p2.stunTimer } });
         } else { p2.x += (targetP2.x - p2.x) * 0.35; p2.y += (targetP2.y - p2.y) * 0.35; }
     } else if (isTwoPlayer) {
-        let s2 = 2.8; let p2Moving = keys["arrowup"] || keys["arrowdown"] || keys["arrowleft"] || keys["arrowright"];
-        if (keys["shiftright"] && p2.stamina > 0 && p2Moving) { s2 = 4.8; p2.stamina = Math.max(0, p2.stamina - 0.6); }
-        else { p2.stamina = Math.min(p2.maxStamina, p2.stamina + 0.2); }
-        if (keys["arrowup"]) p2.y -= s2; if (keys["arrowdown"]) p2.y += s2; if (keys["arrowleft"]) p2.x -= s2; if (keys["arrowright"]) p2.x += s2;
+        if (p2.stunTimer <= 0) {
+            let s2 = 2.8; let p2Moving = keys["arrowup"] || keys["arrowdown"] || keys["arrowleft"] || keys["arrowright"];
+            if (keys["shiftright"] && p2.stamina > 0 && p2Moving) { s2 = 4.8; p2.stamina = Math.max(0, p2.stamina - 0.6); }
+            else { p2.stamina = Math.min(p2.maxStamina, p2.stamina + 0.2); }
+            if (keys["arrowup"]) p2.y -= s2; if (keys["arrowdown"]) p2.y += s2; if (keys["arrowleft"]) p2.x -= s2; if (keys["arrowright"]) p2.x += s2;
+        }
         p2.x = Math.max(20, Math.min(980, p2.x)); p2.y = Math.max(20, Math.min(580, p2.y));
     } else {
-        // FIX: Active AI Opponent Engine
-        let aiSpeed = 2.4; aiCycleTimer++; if (aiCycleTimer > 600) aiCycleTimer = 0; 
-        if (aiCycleTimer > 300 && p2.stamina > 0) { aiSpeed = 4.3; p2.stamina = Math.max(0, p2.stamina - 0.5); }
-        else { p2.stamina = Math.min(p2.maxStamina, p2.stamina + 0.25); }
-        
-        let targetX = ball.x, targetY = ball.y;
-        if (ball.owner === "player2") { 
-            // If AI has the ball, run directly to your goal box
-            targetX = 30; targetY = 300; 
-        } else if (ball.owner === "player1") {
-            // Aggressive intercept: track exactly where you are trying to hide
-            targetX = p1.x; targetY = p1.y;
+        if (p2.stunTimer <= 0) {
+            let aiSpeed = (ball.owner === "player2") ? 2.15 : 2.4; 
+            aiCycleTimer++; if (aiCycleTimer > 600) aiCycleTimer = 0; 
+            if (aiCycleTimer > 300 && p2.stamina > 0) { aiSpeed += 1.5; p2.stamina = Math.max(0, p2.stamina - 0.5); }
+            else { p2.stamina = Math.min(p2.maxStamina, p2.stamina + 0.25); }
+            
+            let targetX = ball.x, targetY = ball.y;
+            if (ball.owner === "player2") { 
+                targetX = 30; targetY = 300; 
+            } else if (ball.owner === "player1") {
+                targetX = p1.x; targetY = p1.y;
+            }
+            
+            if (targetY < p2.y) p2.y -= aiSpeed; if (targetY > p2.y) p2.y += aiSpeed;
+            if (targetX < p2.x) p2.x -= aiSpeed; if (targetX > p2.x) p2.x += aiSpeed;
+            
+            let distToPlayer = Math.hypot(p1.x - p2.x, p1.y - p2.y);
+            if (ball.owner === "player1" && distToPlayer < 38) {
+                tackle(2); 
+            }
+            
+            if (Math.hypot(ball.x - p2.x, ball.y - p2.y) < 22 && ball.owner === null && ball.protectionTimer <= 0) ball.owner = "player2";
+            if (ball.owner === "player2" && p2.x < 400) shoot(2);
         }
-        
-        if (targetY < p2.y) p2.y -= aiSpeed; if (targetY > p2.y) p2.y += aiSpeed;
-        if (targetX < p2.x) p2.x -= aiSpeed; if (targetX > p2.x) p2.x += aiSpeed;
-        
-        // Active Proximity Tackle Engine
-        let distToPlayer = Math.hypot(p1.x - p2.x, p1.y - p2.y);
-        if (ball.owner === "player1" && distToPlayer < 38) {
-            tackle(2); // Triggers steal/tackle mechanics natively
-        }
-        
-        if (Math.hypot(ball.x - p2.x, ball.y - p2.y) < 22 && ball.owner === null && ball.protectionTimer <= 0) ball.owner = "player2";
-        if (ball.owner === "player2" && p2.x < 400) shoot(2);
         p2.x = Math.max(20, Math.min(980, p2.x)); p2.y = Math.max(20, Math.min(580, p2.y));
     }
 }
@@ -581,8 +672,8 @@ function ballPhysics() {
     else if (ball.owner === "player2") { ball.x = p2.x - 14; ball.y = p2.y; ball.vx = 0; ball.vy = 0; } 
     else {
         ball.x += ball.vx; ball.y += ball.vy; ball.vx *= 0.97; ball.vy *= 0.97;
-        if (Math.hypot(p1.x - ball.x, p1.y - ball.y) < 22 && ball.lastOwner === "player2") { ball.owner = "player1"; ball.protectionTimer = 20; }
-        if (Math.hypot(p2.x - ball.x, p2.y - ball.y) < 22 && ball.lastOwner === "player1") { ball.owner = "player2"; ball.protectionTimer = 20; }
+        if (Math.hypot(p1.x - ball.x, p1.y - ball.y) < 22 && ball.lastOwner === "player2") { if(p1.stunTimer<=0) ball.owner = "player1"; ball.protectionTimer = 20; }
+        if (Math.hypot(p2.x - ball.x, p2.y - ball.y) < 22 && ball.lastOwner === "player1") { if(p2.stunTimer<=0) ball.owner = "player2"; ball.protectionTimer = 20; }
     }
     if (ball.y < 10 || ball.y > 590) ball.vy *= -1;
     if (!isMultiplayerMode || isHost) {
@@ -594,6 +685,7 @@ function ballPhysics() {
 
 function triggerGoal() {
     goalSequenceTimer = 90; p1.x = 200; p1.y = 300; p2.x = 800; p2.y = 300; ball.owner = null; ball.lastOwner = null;
+    p1.stunTimer = 0; p2.stunTimer = 0;
     targetP1.x = 200; targetP1.y = 300; targetP2.x = 800; targetP2.y = 300; targetBall.x = 500; targetBall.y = 300;
     checkWinCondition();
 }
@@ -605,20 +697,41 @@ function checkWinCondition() {
 
 function resetPositions() {
     p1.x = 200; p1.y = 300; p2.x = 800; p2.y = 300; ball.x = 500; ball.y = 300; ball.vx = 0; ball.vy = 0; ball.owner = null; ball.lastOwner = null; ball.protectionTimer = 30; 
+    p1.stunTimer = 0; p2.stunTimer = 0;
     targetP1.x = 200; targetP1.y = 300; targetP2.x = 800; targetP2.y = 300; targetBall.x = 500; targetBall.y = 300;
 }
 
 function resetGame() { p1.score = 0; p2.score = 0; p1.stamina = 100; p2.stamina = 100; aiCycleTimer = 0; resetPositions(); }
 
 function shoot(playerNum) {
-    if (playerNum === 1 && ball.owner === "player1") { ball.owner = null; ball.lastOwner = "player1"; ball.vx = 15; ball.vy = (Math.random() - 0.5) * 4; ball.protectionTimer = 30; } 
-    else if (playerNum === 2 && ball.owner === "player2") { ball.owner = null; ball.lastOwner = "player2"; ball.vx = -15; ball.vy = (Math.random() - 0.5) * 4; ball.protectionTimer = 30; }
+    if (playerNum === 1 && ball.owner === "player1" && p1.stunTimer <= 0) { ball.owner = null; ball.lastOwner = "player1"; ball.vx = 15; ball.vy = (Math.random() - 0.5) * 4; ball.protectionTimer = 30; } 
+    else if (playerNum === 2 && ball.owner === "player2" && p2.stunTimer <= 0) { ball.owner = null; ball.lastOwner = "player2"; ball.vx = -15; ball.vy = (Math.random() - 0.5) * 4; ball.protectionTimer = 30; }
 }
 
 function tackle(playerNum) {
-    if (Math.hypot(p1.x - p2.x, p1.y - p2.y) < 36) {
-        if (playerNum === 1 && ball.owner === "player2") { ball.owner = "player1"; ball.protectionTimer = 20; } 
-        else if (playerNum === 2 && ball.owner === "player1") { ball.owner = "player2"; ball.protectionTimer = 20; }
+    if (playerNum === 1 && p1.stunTimer > 0) return;
+    if (playerNum === 2 && p2.stunTimer > 0) return;
+
+    let reach = (playerNum === 1) ? 48 : 36;
+    if (Math.hypot(p1.x - p2.x, p1.y - p2.y) < reach) {
+        if (playerNum === 1 && ball.owner === "player2") { 
+            ball.owner = "player1"; 
+            ball.protectionTimer = 25; 
+            p2.stunTimer = 60; 
+        } 
+        else if (playerNum === 2 && ball.owner === "player1" && ball.protectionTimer <= 0) { 
+            ball.owner = "player2"; 
+            ball.protectionTimer = 25; 
+            p1.stunTimer = 60; 
+        }
+    } else if (playerNum === 1 && ball.owner === null) {
+        let dx = ball.x - p1.x;
+        let dy = ball.y - p1.y;
+        let d = Math.hypot(dx, dy);
+        if (d < 80 && d > 0) {
+            p1.x += (dx / d) * 12;
+            p1.y += (dy / d) * 12;
+        }
     }
 }
 
@@ -642,8 +755,8 @@ function update() {
         movePlayers();
         if (!isMultiplayerMode || isHost) {
             if (ball.owner === null && ball.protectionTimer <= 0) {
-                if (Math.hypot(p1.x - ball.x, p1.y - ball.y) < 22) ball.owner = "player1";
-                if (Math.hypot(p2.x - ball.x, p2.y - ball.y) < 22) ball.owner = "player2";
+                if (Math.hypot(p1.x - ball.x, p1.y - ball.y) < 22 && p1.stunTimer <= 0) ball.owner = "player1";
+                if (Math.hypot(p2.x - ball.x, p2.y - ball.y) < 22 && p2.stunTimer <= 0) ball.owner = "player2";
             }
             ballPhysics();
         } else {
@@ -658,8 +771,8 @@ function update() {
     if (isMultiplayerMode && isHost) {
         sendNetworkData({
             type: "state",
-            p1: { x: p1.x, y: p1.y, stamina: p1.stamina, score: p1.score },
-            p2: { x: p2.x, y: p2.y, stamina: p2.stamina, score: p2.score },
+            p1: { x: p1.x, y: p1.y, stamina: p1.stamina, score: p1.score, stunTimer: p1.stunTimer },
+            p2: { x: p2.x, y: p2.y, stamina: p2.stamina, score: p2.score, stunTimer: p2.stunTimer },
             ball: { x: ball.x, y: ball.y, owner: ball.owner },
             goalSequenceTimer: goalSequenceTimer, gameOver: (gameMode === "gameover"), winner: winner
         });
