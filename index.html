@@ -1,0 +1,688 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Retro Ball - Multiplayer Edition</title>
+<style>
+    body {
+        margin: 0;
+        background: #0b0f1a;
+        display: flex;
+        justify-content: center;
+        align-items: center;
+        height: 100vh;
+        font-family: monospace;
+        color: white;
+        flex-direction: column;
+        user-select: none;
+        -webkit-user-select: none;
+        overflow: hidden;
+    }
+
+    #game-container {
+        position: relative;
+    }
+
+    canvas {
+        background: #1a2238;
+        border: 3px solid #3cffd0;
+        image-rendering: pixelated;
+        display: block;
+        cursor: pointer;
+    }
+
+    #hud {
+        margin-bottom: 10px;
+        font-size: 14px;
+        color: #3cffd0;
+    }
+
+    #mp-panel {
+        margin-top: 15px;
+        display: none;
+        background: #111625;
+        border: 2px solid #3cffd0;
+        padding: 15px;
+        border-radius: 5px;
+        text-align: center;
+        width: 450px;
+        position: relative;
+    }
+
+    #battle-notification {
+        display: none;
+        background: #ff0077;
+        border: 2px solid white;
+        color: white;
+        padding: 12px;
+        margin-top: 10px;
+        border-radius: 4px;
+        font-weight: bold;
+        box-shadow: 0 0 15px rgba(255, 0, 119, 0.6);
+    }
+
+    input {
+        background: #1a2238;
+        border: 1px solid #3cffd0;
+        color: white;
+        padding: 6px;
+        font-family: monospace;
+        font-size: 14px;
+        width: 160px;
+        text-align: center;
+    }
+
+    button {
+        background: #3cffd0;
+        border: none;
+        color: #0b0f1a;
+        padding: 6px 12px;
+        font-family: monospace;
+        font-weight: bold;
+        cursor: pointer;
+        font-size: 14px;
+    }
+
+    button:hover {
+        background: #fff;
+    }
+
+    .accept-btn {
+        background: white;
+        color: #ff0077;
+        margin-left: 10px;
+    }
+
+    #handheld-controls {
+        display: none;
+        position: absolute;
+        top: 0;
+        left: 0;
+        width: 1000px;
+        height: 600px;
+        pointer-events: none;
+    }
+
+    #touch-joystick-zone {
+        position: absolute;
+        top: 0;
+        left: 0;
+        width: 500px;
+        height: 600px;
+        pointer-events: auto;
+    }
+
+    #joystick-boundary {
+        position: absolute;
+        width: 120px;
+        height: 120px;
+        border-radius: 50%;
+        background: rgba(255, 255, 255, 0.04);
+        border: 2px solid rgba(60, 255, 208, 0.25);
+        transform: translate(-50%, -50%);
+        display: none; 
+        pointer-events: none;
+    }
+
+    #joystick-stick {
+        position: absolute;
+        left: 35px;
+        top: 35px;
+        width: 50px;
+        height: 50px;
+        border-radius: 50%;
+        background: rgba(60, 255, 208, 0.7);
+        box-shadow: 0 0 10px rgba(60, 255, 208, 0.4);
+        pointer-events: none;
+    }
+
+    .v-btn {
+        position: absolute;
+        width: 75px;
+        height: 75px;
+        border-radius: 50%;
+        background: rgba(255, 255, 255, 0.15);
+        border: 3px solid #3cffd0;
+        color: #3cffd0;
+        font-family: monospace;
+        font-weight: bold;
+        font-size: 13px;
+        display: flex;
+        justify-content: center;
+        align-items: center;
+        pointer-events: auto;
+        cursor: pointer;
+        box-shadow: 0 0 10px rgba(60, 255, 208, 0.2);
+    }
+    .v-btn:active {
+        background: rgba(60, 255, 208, 0.4);
+        color: white;
+    }
+
+    #btn-tackle {
+        right: 50px;
+        bottom: 150px; 
+        border-color: #ff0077;
+        color: #ff0077;
+    }
+    #btn-tackle:active {
+        background: rgba(255, 0, 119, 0.4);
+    }
+
+    #btn-shoot {
+        right: 50px;
+        bottom: 50px; 
+    }
+</style>
+<script src="https://unpkg.com/peerjs@1.5.4/dist/peerjs.min.js"></script>
+</head>
+<body>
+
+<div id="hud">RETRO BALL ⚽ | Select Device Type to Begin</div>
+
+<div id="game-container">
+    <canvas id="game" width="1000" height="600"></canvas>
+    
+    <div id="handheld-controls">
+        <div id="touch-joystick-zone">
+            <div id="joystick-boundary">
+                <div id="joystick-stick"></div>
+            </div>
+        </div>
+        <div id="btn-tackle" class="v-btn">BTN 2<br>TACKLE</div>
+        <div id="btn-shoot" class="v-btn">BTN 1<br>SHOOT</div>
+    </div>
+</div>
+
+<div id="mp-panel">
+    <div id="my-id-display" style="margin-bottom: 12px; font-weight: bold; font-size: 16px;">Your Unique ID: Generating...</div>
+    <div>
+        <input type="text" id="join-id-input" placeholder="Enter Opponent ID">
+        <button id="connect-btn">Send Battle Request</button>
+    </div>
+    <div id="connection-status" style="color: #888; font-size: 13px; margin-bottom: 5px;">Status: Initializing connection...</div>
+
+    <div id="battle-notification">
+        <span id="notification-msg">player[Code] wants to battle you!</span>
+        <button id="accept-battle-btn" class="accept-btn">Accept Match</button>
+    </div>
+</div>
+
+<script>
+const canvas = document.getElementById("game");
+const ctx = canvas.getContext("2d");
+
+const keys = {};
+let controlDevice = "none"; 
+let gameMode = "device_select"; 
+let isTwoPlayer = false;
+let isMultiplayerMode = false;
+let isHost = false; 
+
+let joystickVector = { x: 0, y: 0 };
+let joystickActive = false;
+let joystickCenter = { x: 0, y: 0 };
+let currentPointerId = null;
+
+let peer = null;
+let conn = null;
+let myShortId = Math.floor(100 + Math.random() * 900); 
+let myCustomPeerId = "Player-" + myShortId;
+let pendingSenderId = ""; 
+
+let targetP1 = { x: 200, y: 300 };
+let targetP2 = { x: 800, y: 300 };
+let targetBall = { x: 500, y: 300 };
+
+let gameOver = false;
+let winner = "";
+let goalSequenceTimer = 0; 
+let aiCycleTimer = 0; 
+
+const buttons = {
+    laptopProfile:   { x: 200, y: 260, w: 600, h: 60 },
+    handheldProfile: { x: 200, y: 340, w: 600, h: 60 },
+    menuSolo:        { x: 250, y: 220, w: 500, h: 50 },
+    menuVersus:      { x: 250, y: 280, w: 500, h: 50 },
+    menuOnline:      { x: 250, y: 340, w: 500, h: 50 }
+};
+
+canvas.addEventListener("pointerdown", (e) => {
+    const rect = canvas.getBoundingClientRect();
+    const clickX = ((e.clientX - rect.left) / rect.width) * canvas.width;
+    const clickY = ((e.clientY - rect.top) / rect.height) * canvas.height;
+
+    if (gameMode === "device_select") {
+        if (checkClick(clickX, clickY, buttons.laptopProfile)) setDeviceScheme("laptop");
+        else if (checkClick(clickX, clickY, buttons.handheldProfile)) setDeviceScheme("handheld");
+        return;
+    }
+
+    if (gameMode === "menu") {
+        if (checkClick(clickX, clickY, buttons.menuSolo)) {
+            isTwoPlayer = false; isMultiplayerMode = false; startGame();
+        } else if (checkClick(clickX, clickY, buttons.menuVersus) && controlDevice === "laptop") {
+            isTwoPlayer = true; isMultiplayerMode = false; startGame();
+        } else if (checkClick(clickX, clickY, buttons.menuOnline)) {
+            setupMultiplayerMenu();
+        }
+        return;
+    }
+
+    if (gameMode === "gameover") {
+        resetGame();
+        gameMode = isMultiplayerMode ? "playing" : "menu";
+    }
+});
+
+function checkClick(cx, cy, btn) {
+    return (cx >= btn.x && cx <= btn.x + btn.w && cy >= btn.y && cy <= btn.y + btn.h);
+}
+
+function setDeviceScheme(type) {
+    controlDevice = type;
+    gameMode = "menu";
+    if (type === "laptop") {
+        document.getElementById("hud").innerText = "RETRO BALL ⚽ | Local P1: WASD, Shift (Sprint), E (Action) | Local P2: Arrows, R-Ctrl (Action)";
+    } else {
+        document.getElementById("handheld-controls").style.display = "block";
+        document.getElementById("hud").innerText = "RETRO BALL ⚽ | Handheld Mode: Use Touch Stick & Buttons";
+    }
+}
+
+document.addEventListener("keydown", e => {
+    keys[e.key.toLowerCase()] = true;
+    if (e.code === "ShiftRight") keys["shiftright"] = true;
+    if (e.code === "ControlRight") keys["controlright"] = true;
+    if (e.code === "ShiftLeft") keys["shiftleft"] = true;
+
+    if (controlDevice === "laptop" && gameMode === "playing" && goalSequenceTimer <= 0) {
+        if (isMultiplayerMode) {
+            if (isHost && e.key.toLowerCase() === "e") triggerAction(1);
+            else if (!isHost && (e.key.toLowerCase() === "e" || e.code === "ControlRight")) triggerAction(2);
+        } else {
+            if (e.key.toLowerCase() === "e") { if (ball.owner === "player1") shoot(1); else tackle(1); }
+            if (e.code === "ControlRight") { if (ball.owner === "player2") shoot(2); else tackle(2); }
+        }
+    }
+});
+
+document.addEventListener("keyup", e => {
+    keys[e.key.toLowerCase()] = false;
+    if (e.code === "ShiftRight") keys["shiftright"] = false;
+    if (e.code === "ControlRight") keys["controlright"] = false;
+    if (e.code === "ShiftLeft") keys["shiftleft"] = false;
+});
+
+function triggerAction(playerNum, forcedActionType = "") {
+    if (gameMode !== "playing" || goalSequenceTimer > 0) return;
+    let decision = forcedActionType || ((ball.owner === "player" + playerNum) ? "shoot" : "tackle");
+    if (decision === "shoot") shoot(playerNum); else tackle(playerNum);
+    if (isMultiplayerMode) sendNetworkData({ type: "action", action: decision, player: playerNum });
+}
+
+document.getElementById("btn-shoot").addEventListener("pointerdown", () => {
+    triggerAction((isMultiplayerMode && !isHost) ? 2 : 1, "shoot");
+});
+document.getElementById("btn-tackle").addEventListener("pointerdown", () => {
+    triggerAction((isMultiplayerMode && !isHost) ? 2 : 1, "tackle");
+});
+
+const jZone = document.getElementById("touch-joystick-zone");
+const jBoundary = document.getElementById("joystick-boundary");
+const jStick = document.getElementById("joystick-stick");
+
+jZone.addEventListener("pointerdown", (e) => {
+    if (joystickActive) return;
+    joystickActive = true;
+    currentPointerId = e.pointerId;
+    jZone.setPointerCapture(e.pointerId);
+
+    const rect = jZone.getBoundingClientRect();
+    const localX = e.clientX - rect.left;
+    const localY = e.clientY - rect.top;
+
+    joystickCenter.x = localX;
+    joystickCenter.y = localY;
+
+    jBoundary.style.left = localX + "px";
+    jBoundary.style.top = localY + "px";
+    jBoundary.style.display = "block";
+    jStick.style.transform = "translate(0px, 0px)";
+});
+
+jZone.addEventListener("pointermove", (e) => {
+    if (!joystickActive || e.pointerId !== currentPointerId) return;
+
+    const rect = jZone.getBoundingClientRect();
+    const localX = e.clientX - rect.left;
+    const localY = e.clientY - rect.top;
+
+    let deltaX = localX - joystickCenter.x;
+    let deltaY = localY - joystickCenter.y;
+    let distance = Math.hypot(deltaX, deltaY);
+    const maxRadius = 60;
+
+    if (distance > maxRadius) {
+        deltaX = (deltaX / distance) * maxRadius;
+        deltaY = (deltaY / distance) * maxRadius;
+    }
+
+    jStick.style.transform = `translate(${deltaX}px, ${deltaY}px)`;
+    joystickVector.x = deltaX / maxRadius;
+    joystickVector.y = deltaY / maxRadius;
+});
+
+jZone.addEventListener("pointerup", (e) => {
+    if (e.pointerId !== currentPointerId) return;
+    joystickActive = false; currentPointerId = null;
+    jBoundary.style.display = "none";
+    joystickVector.x = 0; joystickVector.y = 0;
+});
+
+const p1 = { x: 200, y: 300, color: "cyan", score: 0, stamina: 100, maxStamina: 100, radius: 14 };
+const p2 = { x: 800, y: 300, color: "red", score: 0, stamina: 100, maxStamina: 100, radius: 14 };
+const ball = { x: 500, y: 300, vx: 0, vy: 0, size: 9, owner: null, protectionTimer: 0, lastOwner: null };
+
+function setupMultiplayerMenu() {
+    gameMode = "multiplayer_setup";
+    document.getElementById("mp-panel").style.display = "block";
+    document.getElementById("my-id-display").innerText = "Your Unique ID: " + myCustomPeerId;
+
+    peer = new Peer(myCustomPeerId);
+    peer.on('open', () => {
+        document.getElementById("connection-status").innerText = "Status: Waiting for battle request or enter code...";
+    });
+    peer.on('connection', (connection) => {
+        conn = connection; isHost = false; 
+        conn.on('data', (data) => { handleIncomingNetworkData(data); });
+        conn.on('open', () => { document.getElementById("connection-status").innerText = "Status: Stream pipeline handshake established."; });
+    });
+}
+
+document.getElementById("connect-btn").addEventListener("click", () => {
+    let rawInput = document.getElementById("join-id-input").value.trim();
+    if(!rawInput) return;
+    let targetPeerId = rawInput.startsWith("Player-") ? rawInput : "Player-" + rawInput;
+    
+    conn = peer.connect(targetPeerId);
+    isHost = true; 
+    conn.on('open', () => { sendNetworkData({ type: "battle_request", senderId: myCustomPeerId }); });
+    conn.on('data', (data) => { handleIncomingNetworkData(data); });
+});
+
+document.getElementById("accept-battle-btn").addEventListener("click", () => {
+    document.getElementById("battle-notification").style.display = "none";
+    isMultiplayerMode = true;
+    sendNetworkData({ type: "battle_accepted" });
+    setTimeout(() => { document.getElementById("mp-panel").style.display = "none"; startGame(); }, 1000);
+});
+
+function sendNetworkData(obj) { if (conn && conn.open) conn.send(obj); }
+
+function handleIncomingNetworkData(data) {
+    if (data.type === "battle_request") {
+        pendingSenderId = data.senderId;
+        document.getElementById("notification-msg").innerText = pendingSenderId + " challenges you!";
+        document.getElementById("battle-notification").style.display = "block";
+    }
+    if (data.type === "battle_accepted") {
+        isMultiplayerMode = true;
+        setTimeout(() => { document.getElementById("mp-panel").style.display = "none"; startGame(); }, 1000);
+    }
+    if (data.type === "state") {
+        if (!isHost) {
+            targetP1.x = data.p1.x; targetP1.y = data.p1.y; p1.stamina = data.p1.stamina;
+            targetP2.x = data.p2.x; targetP2.y = data.p2.y; p2.stamina = data.p2.stamina;
+            targetBall.x = data.ball.x; targetBall.y = data.ball.y;
+            ball.owner = data.ball.owner; p1.score = data.p1.score; p2.score = data.p2.score;
+            goalSequenceTimer = data.goalSequenceTimer;
+            if (data.gameOver) { gameMode = "gameover"; winner = data.winner; }
+        } else { targetP2.x = data.p2.x; targetP2.y = data.p2.y; p2.stamina = data.p2.stamina; }
+    }
+    if (data.type === "action") {
+        if (data.action === "shoot") shoot(data.player);
+        if (data.action === "tackle") tackle(data.player);
+    }
+}
+
+function startGame() {
+    p1.score = 0; p2.score = 0; gameMode = "playing"; aiCycleTimer = 0; resetPositions();
+}
+
+function drawMenuButton(btn, text, isDisabled = false) {
+    ctx.fillStyle = isDisabled ? "#222a3a" : "#111625";
+    ctx.fillRect(btn.x, btn.y, btn.w, btn.h);
+    ctx.strokeStyle = isDisabled ? "#445" : "#3cffd0";
+    ctx.lineWidth = 2;
+    ctx.strokeRect(btn.x, btn.y, btn.w, btn.h);
+    
+    ctx.fillStyle = isDisabled ? "#556" : "white";
+    ctx.font = "bold 16px monospace";
+    ctx.textAlign = "center";
+    ctx.fillText(text, btn.x + btn.w/2, btn.y + btn.h/2 + 5);
+}
+
+function drawDeviceSelection() {
+    ctx.fillStyle = "#0b0f1a"; ctx.fillRect(0, 0, canvas.width, canvas.height);
+    ctx.fillStyle = "#3cffd0"; ctx.font = "bold 32px monospace"; ctx.textAlign = "center";
+    ctx.fillText("SELECT YOUR HARDWARE CONTROL", 500, 160);
+    
+    drawMenuButton(buttons.laptopProfile, "LAPTOP / KEYBOARD ENGINE");
+    drawMenuButton(buttons.handheldProfile, "HANDHELD / MOBILE TOUCH INTERFACE");
+}
+
+function drawMenu() {
+    ctx.fillStyle = "#0b0f1a"; ctx.fillRect(0, 0, canvas.width, canvas.height);
+    ctx.fillStyle = "#3cffd0"; ctx.font = "bold 46px monospace"; ctx.textAlign = "center";
+    ctx.fillText("RETRO BALL", 500, 130);
+    
+    drawMenuButton(buttons.menuSolo, "1 PLAYER: SOLO MATCH VS AI");
+    
+    let blockVersus = (controlDevice === "handheld");
+    drawMenuButton(buttons.menuVersus, blockVersus ? "[LOCAL VERSUS REQUIRES LAPTOP KEYBOARD]" : "2 PLAYERS: LOCAL VERSUS MODE", blockVersus);
+    
+    drawMenuButton(buttons.menuOnline, "3 ONLINE: PEERJS MULTIPLAYER LOBBY");
+    
+    ctx.fillStyle = "#ff0077"; ctx.font = "14px monospace"; ctx.fillText("Tap/Click any option to configure match • First to 5 wins", 500, 480);
+}
+
+function drawField() {
+    ctx.fillStyle = "#1a2238"; ctx.fillRect(0, 0, canvas.width, canvas.height);
+    ctx.strokeStyle = "#3cffd0"; ctx.lineWidth = 2;
+    ctx.beginPath(); ctx.moveTo(500, 0); ctx.lineTo(500, 600); ctx.stroke();
+    ctx.beginPath(); ctx.arc(500, 300, 80, 0, Math.PI * 2); ctx.stroke();
+    ctx.fillStyle = "#3cffd0"; ctx.fillRect(0, 220, 15, 160); ctx.fillRect(985, 220, 15, 160);
+}
+
+function drawCircle(obj, color, r = 14) {
+    ctx.fillStyle = color; ctx.beginPath(); ctx.arc(obj.x, obj.y, r, 0, Math.PI * 2); ctx.fill();
+    ctx.strokeStyle = "white"; ctx.lineWidth = 1.5; ctx.stroke();
+}
+
+function drawStaminaBar(p) {
+    const barWidth = 36; const barHeight = 5;
+    const x = p.x - barWidth / 2; const y = p.y + p.radius + 7;
+    ctx.fillStyle = "#444"; ctx.fillRect(x, y, barWidth, barHeight);
+    ctx.fillStyle = p.stamina > 20 ? "#3cffd0" : "#ff3c6e";
+    ctx.fillRect(x, y, (p.stamina / p.maxStamina) * barWidth, barHeight);
+}
+
+function movePlayers() {
+    if (!isMultiplayerMode || isHost) {
+        let speedMultiplier = 2.8;
+        if (controlDevice === "handheld") {
+            p1.x += joystickVector.x * speedMultiplier; p1.y += joystickVector.y * speedMultiplier;
+            p1.stamina = Math.min(p1.maxStamina, p1.stamina + 0.15); 
+        } else {
+            let p1Moving = keys["w"] || keys["s"] || keys["a"] || keys["d"];
+            if (keys["shiftleft"] && p1.stamina > 0 && p1Moving) { speedMultiplier = 4.8; p1.stamina = Math.max(0, p1.stamina - 0.6); }
+            else { p1.stamina = Math.min(p1.maxStamina, p1.stamina + 0.2); }
+            if (keys["w"]) p1.y -= speedMultiplier; if (keys["s"]) p1.y += speedMultiplier; if (keys["a"]) p1.x -= speedMultiplier; if (keys["d"]) p1.x += speedMultiplier;
+        }
+        p1.x = Math.max(20, Math.min(980, p1.x)); p1.y = Math.max(20, Math.min(580, p1.y));
+    }
+
+    if (isMultiplayerMode) {
+        if (!isHost) {
+            let speedMultiplier = 2.8;
+            if (controlDevice === "handheld") {
+                p2.x += joystickVector.x * speedMultiplier; p2.y += joystickVector.y * speedMultiplier;
+                p2.stamina = Math.min(p2.maxStamina, p2.stamina + 0.15);
+            } else {
+                let p2Moving = keys["w"] || keys["s"] || keys["a"] || keys["d"] || keys["arrowup"] || keys["arrowdown"] || keys["arrowleft"] || keys["arrowright"];
+                let up = keys["w"] || keys["arrowup"], down = keys["s"] || keys["arrowdown"], left = keys["a"] || keys["arrowleft"], right = keys["d"] || keys["arrowright"];
+                if ((keys["shiftleft"] || keys["shiftright"]) && p2.stamina > 0 && p2Moving) { speedMultiplier = 4.8; p2.stamina = Math.max(0, p2.stamina - 0.6); }
+                else { p2.stamina = Math.min(p2.maxStamina, p2.stamina + 0.2); }
+                if (up) p2.y -= speedMultiplier; if (down) p2.y += speedMultiplier; if (left) p2.x -= speedMultiplier; if (right) p2.x += speedMultiplier;
+            }
+            p2.x = Math.max(20, Math.min(980, p2.x)); p2.y = Math.max(20, Math.min(580, p2.y));
+            sendNetworkData({ type: "state", p2: { x: p2.x, y: p2.y, stamina: p2.stamina } });
+        } else { p2.x += (targetP2.x - p2.x) * 0.35; p2.y += (targetP2.y - p2.y) * 0.35; }
+    } else if (isTwoPlayer) {
+        let s2 = 2.8; let p2Moving = keys["arrowup"] || keys["arrowdown"] || keys["arrowleft"] || keys["arrowright"];
+        if (keys["shiftright"] && p2.stamina > 0 && p2Moving) { s2 = 4.8; p2.stamina = Math.max(0, p2.stamina - 0.6); }
+        else { p2.stamina = Math.min(p2.maxStamina, p2.stamina + 0.2); }
+        if (keys["arrowup"]) p2.y -= s2; if (keys["arrowdown"]) p2.y += s2; if (keys["arrowleft"]) p2.x -= s2; if (keys["arrowright"]) p2.x += s2;
+        p2.x = Math.max(20, Math.min(980, p2.x)); p2.y = Math.max(20, Math.min(580, p2.y));
+    } else {
+        // FIX: Active AI Opponent Engine
+        let aiSpeed = 2.4; aiCycleTimer++; if (aiCycleTimer > 600) aiCycleTimer = 0; 
+        if (aiCycleTimer > 300 && p2.stamina > 0) { aiSpeed = 4.3; p2.stamina = Math.max(0, p2.stamina - 0.5); }
+        else { p2.stamina = Math.min(p2.maxStamina, p2.stamina + 0.25); }
+        
+        let targetX = ball.x, targetY = ball.y;
+        if (ball.owner === "player2") { 
+            // If AI has the ball, run directly to your goal box
+            targetX = 30; targetY = 300; 
+        } else if (ball.owner === "player1") {
+            // Aggressive intercept: track exactly where you are trying to hide
+            targetX = p1.x; targetY = p1.y;
+        }
+        
+        if (targetY < p2.y) p2.y -= aiSpeed; if (targetY > p2.y) p2.y += aiSpeed;
+        if (targetX < p2.x) p2.x -= aiSpeed; if (targetX > p2.x) p2.x += aiSpeed;
+        
+        // Active Proximity Tackle Engine
+        let distToPlayer = Math.hypot(p1.x - p2.x, p1.y - p2.y);
+        if (ball.owner === "player1" && distToPlayer < 38) {
+            tackle(2); // Triggers steal/tackle mechanics natively
+        }
+        
+        if (Math.hypot(ball.x - p2.x, ball.y - p2.y) < 22 && ball.owner === null && ball.protectionTimer <= 0) ball.owner = "player2";
+        if (ball.owner === "player2" && p2.x < 400) shoot(2);
+        p2.x = Math.max(20, Math.min(980, p2.x)); p2.y = Math.max(20, Math.min(580, p2.y));
+    }
+}
+
+function ballPhysics() {
+    if (ball.protectionTimer > 0) ball.protectionTimer--;
+    if (ball.owner === "player1") { ball.x = p1.x + 14; ball.y = p1.y; ball.vx = 0; ball.vy = 0; } 
+    else if (ball.owner === "player2") { ball.x = p2.x - 14; ball.y = p2.y; ball.vx = 0; ball.vy = 0; } 
+    else {
+        ball.x += ball.vx; ball.y += ball.vy; ball.vx *= 0.97; ball.vy *= 0.97;
+        if (Math.hypot(p1.x - ball.x, p1.y - ball.y) < 22 && ball.lastOwner === "player2") { ball.owner = "player1"; ball.protectionTimer = 20; }
+        if (Math.hypot(p2.x - ball.x, p2.y - ball.y) < 22 && ball.lastOwner === "player1") { ball.owner = "player2"; ball.protectionTimer = 20; }
+    }
+    if (ball.y < 10 || ball.y > 590) ball.vy *= -1;
+    if (!isMultiplayerMode || isHost) {
+        if (ball.x > 980 && ball.y > 220 && ball.y < 380) { p1.score++; triggerGoal(); } 
+        else if (ball.x < 20 && ball.y > 220 && ball.y < 380) { p2.score++; triggerGoal(); }
+    }
+    ball.x = Math.max(10, Math.min(990, ball.x)); ball.y = Math.max(10, Math.min(590, ball.y));
+}
+
+function triggerGoal() {
+    goalSequenceTimer = 90; p1.x = 200; p1.y = 300; p2.x = 800; p2.y = 300; ball.owner = null; ball.lastOwner = null;
+    targetP1.x = 200; targetP1.y = 300; targetP2.x = 800; targetP2.y = 300; targetBall.x = 500; targetBall.y = 300;
+    checkWinCondition();
+}
+
+function checkWinCondition() {
+    if (p1.score >= 5) { gameMode = "gameover"; winner = "Player 1"; } 
+    else if (p2.score >= 5) { gameMode = "gameover"; winner = isTwoPlayer || isMultiplayerMode ? "Player 2" : "AI"; }
+}
+
+function resetPositions() {
+    p1.x = 200; p1.y = 300; p2.x = 800; p2.y = 300; ball.x = 500; ball.y = 300; ball.vx = 0; ball.vy = 0; ball.owner = null; ball.lastOwner = null; ball.protectionTimer = 30; 
+    targetP1.x = 200; targetP1.y = 300; targetP2.x = 800; targetP2.y = 300; targetBall.x = 500; targetBall.y = 300;
+}
+
+function resetGame() { p1.score = 0; p2.score = 0; p1.stamina = 100; p2.stamina = 100; aiCycleTimer = 0; resetPositions(); }
+
+function shoot(playerNum) {
+    if (playerNum === 1 && ball.owner === "player1") { ball.owner = null; ball.lastOwner = "player1"; ball.vx = 15; ball.vy = (Math.random() - 0.5) * 4; ball.protectionTimer = 30; } 
+    else if (playerNum === 2 && ball.owner === "player2") { ball.owner = null; ball.lastOwner = "player2"; ball.vx = -15; ball.vy = (Math.random() - 0.5) * 4; ball.protectionTimer = 30; }
+}
+
+function tackle(playerNum) {
+    if (Math.hypot(p1.x - p2.x, p1.y - p2.y) < 36) {
+        if (playerNum === 1 && ball.owner === "player2") { ball.owner = "player1"; ball.protectionTimer = 20; } 
+        else if (playerNum === 2 && ball.owner === "player1") { ball.owner = "player2"; ball.protectionTimer = 20; }
+    }
+}
+
+function update() {
+    if (gameMode === "device_select") { drawDeviceSelection(); requestAnimationFrame(update); return; }
+    if (gameMode === "menu") { drawMenu(); requestAnimationFrame(update); return; }
+    if (gameMode === "multiplayer_setup") {
+        ctx.fillStyle = "#0b0f1a"; ctx.fillRect(0, 0, canvas.width, canvas.height);
+        ctx.fillStyle = "#3cffd0"; ctx.font = "24px monospace"; ctx.textAlign = "center";
+        ctx.fillText("MULTIPLAYER LOBBY SETUP", 500, 200); ctx.textAlign = "left";
+        requestAnimationFrame(update); return;
+    }
+    if (gameMode === "gameover") {
+        ctx.fillStyle = "rgba(11, 15, 26, 0.9)"; ctx.fillRect(0, 0, canvas.width, canvas.height);
+        ctx.fillStyle = "#3cffd0"; ctx.font = "36px monospace"; ctx.textAlign = "center"; ctx.fillText(winner + " Wins the Match!", 500, 260);
+        ctx.fillStyle = "white"; ctx.font = "18px monospace"; ctx.fillText("Tap anywhere to return to match setups", 500, 330); ctx.textAlign = "left";
+        requestAnimationFrame(update); return;
+    }
+
+    if (goalSequenceTimer <= 0) {
+        movePlayers();
+        if (!isMultiplayerMode || isHost) {
+            if (ball.owner === null && ball.protectionTimer <= 0) {
+                if (Math.hypot(p1.x - ball.x, p1.y - ball.y) < 22) ball.owner = "player1";
+                if (Math.hypot(p2.x - ball.x, p2.y - ball.y) < 22) ball.owner = "player2";
+            }
+            ballPhysics();
+        } else {
+            p1.x += (targetP1.x - p1.x) * 0.35; p1.y += (targetP1.y - p1.y) * 0.35;
+            p2.x += (targetP2.x - p2.x) * 0.35; p2.y += (targetP2.y - p2.y) * 0.35;
+            ball.x += (targetBall.x - ball.x) * 0.35; ball.y += (targetBall.y - ball.y) * 0.35;
+        }
+    } else {
+        goalSequenceTimer--; if (goalSequenceTimer === 0 && (!isMultiplayerMode || isHost)) resetPositions();
+    }
+
+    if (isMultiplayerMode && isHost) {
+        sendNetworkData({
+            type: "state",
+            p1: { x: p1.x, y: p1.y, stamina: p1.stamina, score: p1.score },
+            p2: { x: p2.x, y: p2.y, stamina: p2.stamina, score: p2.score },
+            ball: { x: ball.x, y: ball.y, owner: ball.owner },
+            goalSequenceTimer: goalSequenceTimer, gameOver: (gameMode === "gameover"), winner: winner
+        });
+    }
+
+    drawField();
+    drawCircle(p1, p1.color, p1.radius);
+    drawCircle(p2, p2.color, p2.radius);
+    drawCircle(ball, "white", ball.size);
+    drawStaminaBar(p1); drawStaminaBar(p2);
+
+    ctx.fillStyle = "white"; ctx.font = "bold 18px monospace";
+    ctx.fillText("P1: " + p1.score, 40, 45);
+    ctx.fillText((isTwoPlayer || isMultiplayerMode ? "P2: " : "AI: ") + p2.score, 900, 45);
+
+    if (goalSequenceTimer > 0) {
+        ctx.fillStyle = "rgba(0,0,0,0.4)"; ctx.fillRect(0, 230, canvas.width, 140);
+        ctx.fillStyle = "#ff0077"; ctx.font = "italic bold 64px monospace"; ctx.textAlign = "center"; ctx.fillText("GOALLL!!!", 500, 320); ctx.textAlign = "left";
+    }
+    requestAnimationFrame(update);
+}
+
+update();
+</script>
+</body>
+</html>
